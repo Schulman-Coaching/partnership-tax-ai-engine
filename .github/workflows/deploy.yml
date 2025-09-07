@@ -57,6 +57,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
+      - name: Create PostgreSQL test role
+        run: |
+          PGPASSWORD=test_password psql -h localhost -U postgres -d test_db -c "CREATE ROLE root WITH LOGIN SUPERUSER PASSWORD 'test_password';" || true
+      
       - name: Run Python tests
         env:
           DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_db
