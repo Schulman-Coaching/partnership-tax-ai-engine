@@ -1,0 +1,69 @@
+# Auto-labeling configuration for pull requests
+
+# Backend changes
+backend:
+  - 'backend/**/*'
+  - 'backend/*'
+
+# Frontend changes
+frontend:
+  - 'frontend/**/*'
+  - 'frontend/*'
+
+# Documentation changes
+documentation:
+  - '*.md'
+  - 'docs/**/*'
+  - 'README*'
+  - 'CHANGELOG*'
+
+# Infrastructure/DevOps changes
+infrastructure:
+  - 'deployment/**/*'
+  - 'docker-compose*.yml'
+  - 'Dockerfile*'
+  - '.github/**/*'
+
+# Testing changes
+testing:
+  - 'tests/**/*'
+  - '**/*test*'
+  - '**/*spec*'
+  - 'pytest.ini'
+  - 'jest.config*'
+
+# Security changes
+security:
+  - '**/security/**/*'
+  - '**/*security*'
+  - '.github/workflows/code-quality.yml'
+
+# Performance changes
+performance:
+  - '**/*performance*'
+  - '**/*benchmark*'
+  - '.github/workflows/performance-monitoring.yml'
+
+# Dependencies
+dependencies:
+  - 'package*.json'
+  - 'requirements*.txt'
+  - 'poetry.lock'
+  - 'yarn.lock'
+
+# Configuration
+configuration:
+  - '*.yml'
+  - '*.yaml'
+  - '*.json'
+  - '*.toml'
+  - '*.ini'
+  - '.env*'
+
+# AI/ML changes
+ai-ml:
+  - '**/ai/**/*'
+  - '**/ml/**/*'
+  - '**/*ai*'
+  - '**/*machine*learning*'
+  - '**/*model*'

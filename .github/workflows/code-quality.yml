@@ -1,0 +1,192 @@
+name: Code Quality & Security
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          pip install bandit safety semgrep
+
+      - name: Run Bandit security scan
+        run: |
+          cd backend
+          bandit -r app/ -f json -o bandit-report.json || true
+          bandit -r app/ --severity-level medium
+
+      - name: Check dependencies for vulnerabilities
+        run: |
+          cd backend
+          safety check --json --output safety-report.json || true
+          safety check
+
+      - name: Run Semgrep security scan
+        run: |
+          semgrep --config=auto --json --output=semgrep-report.json . || true
+          semgrep --config=auto .
+
+      - name: Set up Node.js for frontend security
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Audit npm dependencies
+        run: |
+          cd frontend
+          npm audit --audit-level moderate
+
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies and tools
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install black isort flake8 mypy pylint
+
+      - name: Run Black formatter check
+        run: |
+          cd backend
+          black --check --diff app/ tests/
+
+      - name: Run isort import sorting check
+        run: |
+          cd backend
+          isort --check-only --diff app/ tests/
+
+      - name: Run flake8 linting
+        run: |
+          cd backend
+          flake8 app/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+
+      - name: Run mypy type checking
+        run: |
+          cd backend
+          mypy app/ --ignore-missing-imports
+
+      - name: Run pylint code analysis
+        run: |
+          cd backend
+          pylint app/ --disable=C0114,C0115,C0116,R0903
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: Run TypeScript check
+        run: |
+          cd frontend
+          npm run type-check
+
+  test-coverage:
+    name: Test Coverage Analysis
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Create PostgreSQL test role
+        run: |
+          PGPASSWORD=test_password psql -h localhost -U postgres -d test_db -c "CREATE ROLE root WITH LOGIN SUPERUSER PASSWORD 'test_password';" || true
+
+      - name: Run tests with coverage
+        env:
+          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cd backend
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=html --cov-fail-under=80
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: orgoro/coverage@v3.1
+        with:
+          coverageFile: backend/coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}

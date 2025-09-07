@@ -1,0 +1,179 @@
+name: Issue Management
+
+on:
+  issues:
+    types: [opened, labeled, closed]
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [opened, closed, ready_for_review]
+
+jobs:
+  welcome-new-contributors:
+    name: Welcome New Contributors
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened' && github.event.issue.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    
+    steps:
+      - name: Welcome new contributor
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `
+                👋 Welcome to the Partnership Tax AI Engine project! 
+
+                Thank you for your first contribution. Here are some helpful resources:
+
+                - 📋 [Contributing Guidelines](CONTRIBUTING.md)
+                - 🛠️ [Development Setup](README.md#development)
+                - 📖 [API Documentation](https://partnership-tax-engine.github.io)
+
+                A maintainer will review your issue/PR soon. Feel free to ask questions!
+
+                **Happy coding!** 🚀
+              `
+            })
+
+  auto-label-issues:
+    name: Auto-label Issues
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened' && github.event.issue
+    
+    steps:
+      - name: Label bug reports
+        if: contains(github.event.issue.title, 'bug') || contains(github.event.issue.body, 'bug')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['bug', 'needs-triage']
+            })
+
+      - name: Label feature requests
+        if: contains(github.event.issue.title, 'feature') || contains(github.event.issue.body, 'feature request')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['enhancement', 'needs-discussion']
+            })
+
+      - name: Label documentation issues
+        if: contains(github.event.issue.title, 'documentation') || contains(github.event.issue.title, 'docs')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['documentation', 'good first issue']
+            })
+
+  stale-issue-management:
+    name: Manage Stale Issues
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+      - name: Mark stale issues
+        uses: actions/stale@v8
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: |
+            This issue has been automatically marked as stale because it has not had recent activity.
+            
+            If this issue is still relevant, please:
+            - Add a comment to keep it active
+            - Remove the 'stale' label
+            - Provide additional context or updates
+            
+            This issue will be closed in 7 days if no further activity occurs.
+          stale-pr-message: |
+            This pull request has been automatically marked as stale because it has not had recent activity.
+            
+            If this PR is still relevant, please:
+            - Rebase on the latest main branch
+            - Address any merge conflicts
+            - Add a comment with current status
+            
+            This PR will be closed in 7 days if no further activity occurs.
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+          days-before-stale: 30
+          days-before-close: 7
+          exempt-issue-labels: 'pinned,security,critical'
+          exempt-pr-labels: 'pinned,security,critical'
+
+  project-board-automation:
+    name: Project Board Automation
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened' || github.event.action == 'closed'
+    
+    steps:
+      - name: Add new issues to project board
+        if: github.event.issue && github.event.action == 'opened'
+        uses: actions/add-to-project@v0.4.0
+        with:
+          project-url: https://github.com/orgs/your-org/projects/1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move completed issues
+        if: github.event.issue && github.event.action == 'closed'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Custom logic to move completed issues to "Done" column
+            console.log('Issue closed:', context.payload.issue.title)
+
+  security-issue-handler:
+    name: Handle Security Issues
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'security')
+    
+    steps:
+      - name: Notify security team
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `
+                🔒 **Security Issue Detected**
+                
+                This issue has been labeled as security-related and will be handled with priority.
+                
+                **Next steps:**
+                1. A security team member will review within 24 hours
+                2. We may ask you to provide additional details privately
+                3. A fix will be prioritized in our development pipeline
+                
+                **Thank you for helping keep our project secure!** 🛡️
+                
+                For urgent security matters, please email security@partnership-tax-engine.com
+              `
+            })
+
+      - name: Apply urgent label to critical security issues
+        if: contains(github.event.issue.body, 'critical') || contains(github.event.issue.body, 'urgent')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['urgent', 'critical']
+            })
