@@ -1,0 +1,294 @@
+# Partnership Tax Logic Engine - CI/CD Pipeline
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-west-2.amazonaws.com
+  ECS_CLUSTER: partnership-tax-engine-cluster
+  BACKEND_SERVICE: partnership-tax-engine-backend
+  FRONTEND_SERVICE: partnership-tax-engine-frontend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Python dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run Python tests
+        env:
+          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cd backend
+          pytest tests/ -v --cov=app --cov-report=xml
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install Node.js dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm run test
+      
+      - name: Run frontend lint
+        run: |
+          cd frontend
+          npm run lint
+      
+      - name: Run frontend type check
+        run: |
+          cd frontend
+          npm run type-check
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build and push backend image
+        id: build-backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/partnership-tax-engine-backend:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/partnership-tax-engine-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+      
+      - name: Build and push frontend image
+        id: build-frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/partnership-tax-engine-frontend:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/partnership-tax-engine-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+      
+      - name: Set outputs
+        run: |
+          echo "image=${{ env.ECR_REGISTRY }}/partnership-tax-engine-backend:${{ github.sha }}" >> $GITHUB_OUTPUT
+        id: set-backend-output
+      
+      - name: Set frontend output
+        run: |
+          echo "image=${{ env.ECR_REGISTRY }}/partnership-tax-engine-frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
+        id: set-frontend-output
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Deploy backend to ECS
+        run: |
+          # Update backend service
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }}-staging \
+            --service ${{ env.BACKEND_SERVICE }}-staging \
+            --force-new-deployment
+      
+      - name: Deploy frontend to ECS
+        run: |
+          # Update frontend service
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }}-staging \
+            --service ${{ env.FRONTEND_SERVICE }}-staging \
+            --force-new-deployment
+      
+      - name: Wait for deployment
+        run: |
+          # Wait for backend deployment
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }}-staging \
+            --services ${{ env.BACKEND_SERVICE }}-staging
+          
+          # Wait for frontend deployment
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }}-staging \
+            --services ${{ env.FRONTEND_SERVICE }}-staging
+
+  deploy-production:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Deploy backend to ECS
+        run: |
+          # Create new task definition with updated image
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.BACKEND_SERVICE }})
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ needs.build-and-push.outputs.backend-image }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+          NEW_TASK_INFO=$(aws ecs register-task-definition --region ${{ env.AWS_REGION }} --cli-input-json "$NEW_TASK_DEFINITION")
+          NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+          
+          # Update service
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.BACKEND_SERVICE }} \
+            --task-definition ${{ env.BACKEND_SERVICE }}:$NEW_REVISION
+      
+      - name: Deploy frontend to ECS
+        run: |
+          # Create new task definition with updated image
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.FRONTEND_SERVICE }})
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ needs.build-and-push.outputs.frontend-image }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+          NEW_TASK_INFO=$(aws ecs register-task-definition --region ${{ env.AWS_REGION }} --cli-input-json "$NEW_TASK_DEFINITION")
+          NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+          
+          # Update service
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.FRONTEND_SERVICE }} \
+            --task-definition ${{ env.FRONTEND_SERVICE }}:$NEW_REVISION
+      
+      - name: Wait for deployment
+        run: |
+          # Wait for backend deployment
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.BACKEND_SERVICE }}
+          
+          # Wait for frontend deployment
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.FRONTEND_SERVICE }}
+      
+      - name: Run health checks
+        run: |
+          # Get ALB endpoint
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names partnership-tax-engine-alb \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+          
+          # Health check backend
+          echo "Checking backend health..."
+          curl -f "http://$ALB_DNS/health" || exit 1
+          
+          # Health check frontend
+          echo "Checking frontend health..."
+          curl -f "http://$ALB_DNS/health" || exit 1
+          
+          echo "All health checks passed!"
+
+  notify:
+    needs: [deploy-staging, deploy-production]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Notify deployment status
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
