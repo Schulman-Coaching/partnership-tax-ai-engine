@@ -18,8 +18,8 @@ from docx import Document as DocxDocument
 
 # AI/ML imports
 from openai import AsyncOpenAI
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 import tiktoken
 
 # Custom imports
