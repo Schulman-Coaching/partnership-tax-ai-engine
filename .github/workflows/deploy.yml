@@ -59,7 +59,8 @@ jobs:
       
       - name: Create PostgreSQL test role
         run: |
-          PGPASSWORD=test_password psql -h localhost -U postgres -d test_db -c "CREATE ROLE root WITH LOGIN SUPERUSER PASSWORD 'test_password';" || true
+          # Use the existing postgres user - no need to create additional roles
+          PGPASSWORD=test_password psql -h localhost -U postgres -d test_db -c "SELECT 1;" || true
       
       - name: Run Python tests
         env:
