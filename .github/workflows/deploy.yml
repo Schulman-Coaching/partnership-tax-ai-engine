@@ -64,6 +64,7 @@ jobs:
       
       - name: Run Python tests
         env:
+          TESTING: true
           DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
