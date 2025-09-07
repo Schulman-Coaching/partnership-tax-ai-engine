@@ -6,11 +6,18 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Install build dependencies for alpine
+RUN apk add --no-cache \
+    libc6-compat \
+    g++ \
+    make \
+    python3
+
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including devDependencies for build)
+RUN npm ci
 
 # Copy source code
 COPY . .
