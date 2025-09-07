@@ -1,7 +1,7 @@
 # Partnership Tax Logic Engine - Deployment Status
 
 **Date:** September 7, 2025  
-**Status:** Infrastructure Deployed, Application Deployment Triggered
+**Status:** Infrastructure Deployed, Application Deployment In Progress (Dockerfile Fix Applied)
 
 ## 🎯 Project Overview
 
@@ -33,7 +33,7 @@ The Partnership Tax Logic Engine is an AI-powered platform that automates partne
 - **GitHub Actions Workflow:** Configured with automated testing and deployment
 - **Test Suite:** Created backend pytest tests and frontend test script
 - **Dependencies:** Fixed pytest-cov and PostgreSQL role issues
-- **Latest Commit:** `055dea7` - "Fix GitHub Actions test failures"
+- **Latest Commit:** `d1373e3` - "Fix Dockerfile: change libopenblas-base to libopenblas-dev in runtime stage"
 
 ## 🔄 Current Status
 
@@ -51,7 +51,7 @@ The Partnership Tax Logic Engine is an AI-powered platform that automates partne
 - **Latest Workflow:** Completed in 3m 8s for commit 055dea7
 - **Test Phase:** ✅ PASSING (fixed all test failures)
 - **Build Phase:** ✅ PASSING (fixed Docker build issues)
-- **Deploy Phase:** ✅ DEPLOYMENT TRIGGERED (workflow started)
+- **Deploy Phase:** ✅ DEPLOYMENT RE-TRIGGERED (Dockerfile fix applied, workflow running)
 
 ## 🚧 Remaining Issues
 
@@ -60,7 +60,7 @@ The Docker build issues have been fixed with the following improvements:
 
 #### Backend Dockerfile Fixes:
 - **Multi-stage build:** Added builder stage for dependency installation and runtime stage for production
-- **System dependencies:** Added essential libraries for AI/ML packages (libopenblas-dev, liblapack-dev, libjpeg-dev, zlib1g-dev, libxml2-dev, libxslt-dev)
+- **System dependencies:** Added essential libraries for AI/ML packages (libopenblas-dev, liblapack-dev, libjpeg-dev, zlib1g-dev, libxml2-dev, libxslt-dev) - Fixed runtime dependency from libopenblas-base to libopenblas-dev
 - **Optimized image size:** Reduced final image size by copying only necessary application code
 
 #### Frontend Dockerfile Fixes:
