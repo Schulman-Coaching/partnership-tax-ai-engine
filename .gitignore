@@ -96,3 +96,7 @@ jspm_packages/
 secrets.json
 *.key
 *.pem
+
+# Next.js
+.next/
+next-env.d.ts
