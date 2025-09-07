@@ -44,7 +44,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     curl \
     libpq5 \
-    libopenblas-base \
+    libopenblas-dev \
     libjpeg62-turbo \
     zlib1g \
     libxml2 \
